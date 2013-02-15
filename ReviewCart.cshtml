@@ -1,0 +1,56 @@
+﻿@{
+    Page.Title = "Review Your Cart";
+    
+    if(Request.Cookies["cart"] == null){
+        Response.Redirect("~/");
+    }
+
+    var db = Database.Open("Bakery");
+    var cartId = Request.Cookies["cart"].Value.AsInt();
+    var commandText = string.Empty;
+    
+    if(IsPost){
+        commandText = "DELETE FROM CartItems WHERE CartItemId = @0";
+        db.Execute(commandText, Request["cartItem"]);
+    }
+
+    commandText = @"SELECT p.ID, p.Name, c.Quantity, c.Price,  c.Quantity * c.Price AS Total, c.CartItemId
+                        FROM CartItems c INNER JOIN Products p 
+                        ON c.ProductId = p.Id WHERE c.CartId = @0";
+    var cartItems = db.Query(commandText, cartId);
+    var cartTotal = cartItems.Sum(t => (decimal)t.Total);
+    var grid = new WebGrid(cartItems, canPage: false, canSort: false);
+}
+<ol id="orderProcess">
+    <li><span class="step-number">1</span><a href="~/">Choose Item</a></li>
+    <li><span class="step-number">2</span><a href="~/Order/1">Place Order</a></li>
+    <li class="current"><span class="step-number">3</span>Review Cart</li>
+</ol>
+<h1>Review Your Cart</h1>
+<p>&nbsp;</p>
+<div id="grid">
+@grid.GetHtml(
+    columns: grid.Columns(
+    grid.Column("Name", "Product", format: @<a href="~/Order/@item.ID">@item.Name</a>),
+        grid.Column("Quantity"),
+        grid.Column("Price", "Unit Price", format: @<text>@item.Price.ToString("c")</text>),
+        grid.Column("Price", "Total Price", format: @<text>@item.Total.ToString("c")</text>),
+        grid.Column("", format: @<form method="post">
+                                <input type="hidden" value="@item.CartItemId" name="cartItem" />
+                                <input type="submit" value="Remove" />
+                                </form>)
+    )
+)
+</div>
+<p>&nbsp;</p>
+
+@section scripts{
+<script>
+    $(function () {
+        var html = '<tfoot><tr><td colspan="3"><strong>Total</strong></td><td>';
+        html += '<strong>@cartTotal.ToString("c")</strong>'
+        html += '</td><td colspan="2">&nbsp;</td></tr></tfoot>';
+        $('table').append(html);
+    });
+</script>
+}

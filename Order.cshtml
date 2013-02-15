@@ -1,0 +1,106 @@
+﻿@{
+    Page.Title = "Place Your Order";
+
+    var db = Database.Open("bakery");
+    var productId = UrlData[0].AsInt();
+    var price = Request["price"].AsDecimal();
+    var quantity = Request["orderQty"].AsInt();
+    var commandText = string.Empty;
+    var cartId = 0;
+    var totalItems = 0;    
+    
+    commandText = "SELECT * FROM PRODUCTS WHERE ID = @0";
+    var product = db.QuerySingle(commandText, productId);
+    if (product == null) {
+        Response.Redirect("~/");
+    }
+
+    if(Request.Cookies["cart"] != null){
+        cartId = Request.Cookies["cart"].Value.AsInt();
+        commandText = "SELECT SUM(Quantity) AS TotalItems FROM CartItems WHERE CartId = @0";
+        object result = db.QueryValue(commandText, cartId);
+        totalItems = result == DBNull.Value ? 0 : Convert.ToInt32(result);
+    }
+
+    if(IsPost && quantity > 0){
+        if(Request.Cookies["cart"] == null){
+            commandText = "INSERT INTO Cart (DateCreated) VALUES (GetDate())";
+            db.Execute(commandText);
+            cartId = (int)db.GetLastInsertId();
+        }
+        commandText = "SELECT Quantity FROM CartItems WHERE CartId = @0 AND ProductId = @1";
+        var reduction = db.QueryValue(commandText, cartId, productId);
+        if(reduction != null){
+            totalItems -= reduction;
+        }
+        commandText = "DELETE FROM CartItems WHERE CartId = @0 AND ProductId = @1";
+        db.Execute(commandText, cartId, productId);
+        commandText = "INSERT INTO CartItems (CartId, ProductId, Quantity, Price) VALUES (@0, @1, @2, @3)";
+        db.Execute(commandText, cartId, productId, quantity, price);
+        totalItems += quantity;
+        Response.Cookies["cart"].Value = cartId.ToString();
+        Response.Cookies["cart"].Expires = DateTime.Now.AddMonths(6);
+    }
+}
+
+<ol id="orderProcess">
+    <li><span class="step-number">1</span><a href="~/">Choose Item</a></li>
+    <li class="current"><span class="step-number">2</span>Place Order</li>
+    <li><span class="step-number">3</span><a href="~/ReviewCart">Review Cart</a></li>
+</ol>
+
+<h1>Place Your Order: @product.Name</h1>
+<form action="" method="post">
+    <fieldset class="no-legend">
+        <legend>Place Your Order</legend>
+        <img class="product-image order-image" src="~/Images/Products/Thumbnails/@product.ImageName" alt="Image of @product.Name"/>
+        <ul class="orderPageList" data-role="listview">
+            <li>
+                <div>
+                    <p class="description">@product.Description</p>
+                </div>                
+            </li>
+            <li class="quantity">
+                <div class="fieldcontainer" data-role="fieldcontain">
+                    <label for="orderQty">Quantity</label>
+                    <input type="text" id="orderQty" name="orderQty" value="@(quantity == 0 ? 1 : quantity)"/>
+                    x
+                    <span id="orderPrice">@string.Format("{0:f}", product.Price)</span>
+                    =
+                    <span id="orderTotal">@string.Format("{0:f}", quantity == 0 ? product.Price : quantity * product.Price)</span>
+                </div>
+            </li>
+        </ul>
+        <p class="actions">
+            <input type="hidden" name="productId" value="@product.Id" />
+            <input type="hidden" name="price" value="@product.Price" />
+            @if(!IsPost){
+            <input type="submit" value="Place Order" data-role="none" data-inline="true"/>
+            }
+        </p>
+        <div id="basket">
+            @if(totalItems > 0){
+                <text>Your cart contains <strong>@totalItems</strong> items</text>
+            }
+        </div>
+    </fieldset>
+</form>
+
+<script type="text/javascript">
+    $(function () {
+        var price = parseFloat($("#orderPrice").text()).toFixed(2),
+            total = $("#orderTotal"),
+            orderQty = $("#orderQty");
+
+        orderQty.change(function () {
+            var quantity = parseInt(orderQty.val());
+            if (!quantity || quantity < 1) {
+                orderQty.val(1);
+                quantity = 1;
+            } else if (quantity.toString() !== orderQty.val()) {
+                orderQty.val(quantity);
+            }
+            total.text((price * quantity).toFixed(2));
+        });
+    });
+</script>
